@@ -1,0 +1,1415 @@
+---
+title: "Results"
+author: "Logan"
+date: "2025-06-24"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r include=FALSE}
+#################
+## LIBRARIES ####
+#################
+library(plyr)
+library(Rmisc)
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(readxl)
+library(stringr)
+library(gridExtra)
+library(maps)
+library(cowplot)
+library(lme4)
+library(here)
+library(tidyr)
+library(readr)
+library(lmerTest)
+library(ape)
+library(phytools)
+library(caper)
+library(dispRity)
+library(RColorBrewer)
+library(car)
+library(emmeans)
+library(MCMCglmm)
+library(glmmTMB)
+library(ggpubr)
+library(cowplot)
+library(gridGraphics)
+library(patchwork)
+library(ggplotify)
+```
+
+```{r convenience_functions, include=FALSE}
+# functions for formatting stats in .rmd knit
+
+# rounds to 2 or 3 decimal places
+r0 <- function(num) {format(round(num, 0), nsmall = 0)}
+r1 <- function(num) {format(round(num, 1), nsmall = 1)}
+r2 <- function(num) {format(round(num, 2), nsmall = 2)}
+r3 <- function(num) {format(round(num, 3), nsmall = 3)}
+
+# format p-values
+fp <- function(num) {
+  if (num < .0001) {
+    return("< 0.0001")
+  } else {
+    rounded<-round(num, digits = 4)
+    return(paste0("= ", format(rounded, scientific = FALSE)))
+  }
+}
+
+f <- function(num) {format(num, big.mark = ",")}
+
+color_bird<-"#66499D"
+color_frog<-"#40AC9A"
+color_insect<-"#88AC42"
+color_mammal<-"#AB4253"
+
+```
+
+```{r, include=FALSE}
+################################################################################
+### Reading data and organizing it##
+################################################################################
+FullTest<-read_csv(here::here("", "animal-sounds-data.csv"))
+
+FullTest$expert<-as.factor(FullTest$expert)
+
+```
+
+```{r strength correlation, include=FALSE}
+
+Strength<-summarySE(FullTest, measurevar="correct", groupvars=c("StimID","Species","Category","AnimalStrength","Trait"))
+
+F1A<-ggplot(data=subset(Strength,!is.na(AnimalStrength)),aes(y=correct*100, x=AnimalStrength)) + 
+  geom_smooth(method="lm",se=TRUE,color="black")+
+  geom_point(aes(color=Category),size=2,alpha=0.5) +
+  geom_hline(yintercept=50, linetype="dashed", color = "black") +
+  scale_color_manual(values=c(color_bird,color_frog,color_insect,color_mammal),name="category") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"),
+        aspect.ratio = 1,
+        axis.text = element_text(size = 8),
+        axis.title = element_text(size = 10),
+        legend.position="none"
+  )
+
+strength_model<-glmer(correct~AnimalStrength+(1|Species)+(1|StimID)+(1|user_id),family="binomial",data=subset(FullTest,!is.na(AnimalStrength)))
+strength_anova<-Anova(strength_model)
+
+strength_model2<-lmer(correct~AnimalStrength+(1|Species)+(1|StimID)+(1|user_id),data=subset(FullTest,!is.na(AnimalStrength)))
+strength_anova2<-Anova(strength_model2)
+
+strength_model3<-lmer(correct~AnimalStrength+(1|Species),data=Strength)
+strength_anova3<-Anova(strength_model3)
+
+
+```
+
+```{r, include=FALSE}
+
+s<-unique(FullTest$StimID)
+countSig<-0
+countNot<-0
+pList<-c()
+estList<-c()
+stdList<-c()
+stimIDlist<-c()
+for (i in 1:length(s)){
+  temp<-subset(FullTest,StimID==s[i])
+  model<-glmer(correct ~ 1 + (1|user_id), family='binomial',data=temp)
+  t<-summary(model)
+  estList<-c(estList,t$coefficients[1])
+  stdList<-c(stdList,t$coefficients[2])
+  pList<-c(pList,t$coefficients[4])
+  stimIDlist<-c(stimIDlist,s[i])
+  if (t$coefficients[4]<0.05){
+    countSig<-countSig+1
+  } else {
+    countNot<-countNot+1
+    #print(t$coefficients[4])
+  }
+}
+
+sig_bystim<-data.frame(p=pList,std=stdList,est=estList,StimID=stimIDlist,dummy=1)
+
+```
+
+```{r, include=FALSE}
+
+FullTest$user_id<-as.factor(FullTest$user_id)
+FullModel<-glmer(correct ~ 1 + (1|StimID) + (1|Species) + (1|user_id), family = binomial('logit'),data=FullTest)
+FullModel_summary<-summary(FullModel)
+
+stimSummary<-summarySE(FullTest, measurevar="correct", groupvars=c("StimID","Species","Category"))
+t.test(stimSummary$correct-0.5, mu = 0, alternative = "two.sided")
+
+stimSummary$dummy<-1
+stimSummary2<-summarySE(stimSummary, measurevar="correct", groupvars=c("Species","Category"))
+stimSummary3<-summarySE(stimSummary2, measurevar="correct", groupvars=c())
+stimSummary3$dummy<-1
+F1B3<-ggplot(stimSummary, aes(x=dummy, y=correct)) + 
+  geom_violin(adjust=0.75)+
+  geom_jitter(aes(color=Category),shape=16,width=0.2,height=0,alpha=0.5) +
+  geom_hline(yintercept=0.5,size=1, linetype="dashed", color = "black") +
+  geom_errorbar(data=stimSummary3,aes(ymin=correct-ci, ymax=correct+ci),width=.1) +
+  ylim(0.05,0.95)+
+  scale_fill_manual(values=c(color_bird,color_frog,color_insect,color_mammal)) +
+  scale_color_manual(values=c(color_bird,color_frog,color_insect,color_mammal)) +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(size = 10),
+        axis.text.x = element_blank(),
+        axis.title = element_text(size = 12),
+        axis.title.x = element_blank(),
+        aspect.ratio = 8,
+        legend.position="none"
+  )
+
+stimSummary$Species<-factor(stimSummary$Species,levels=c("Colorado dwarf frog","Tungara frog","Green tree frog","Cope gray treefrog","Gray treefrog","Hourglass treefrog","Midwife toad","Singing mouse","Gelada","Zebra finch","Song sparrow","Swamp sparrow","Canary","Bow-winged grasshopper","Black field cricket","Pacific field cricket","Fruitfly"))
+
+F1B2<-ggplot(stimSummary, aes(x=Species, y=correct, fill=Category, color=Category)) + 
+  geom_pointrange(aes(ymin = correct-ci, ymax = correct+ci), 
+                  position=position_jitter(width=0.2,height=0),size=.3,) +
+  geom_hline(yintercept=0.5, linetype="dashed", color = "black") +
+  scale_fill_manual(values=c(color_bird,color_frog,color_insect,color_mammal),name="category") +
+  scale_color_manual(values=c(color_bird,color_frog,color_insect,color_mammal),name="category") +
+  ylim(0.05,0.95)+
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(size = 10),
+        axis.text.x = element_text(angle = -45, vjust = 0.5, hjust=0),
+        axis.title = element_text(size = 12),
+        legend.position="none"
+  )
+
+
+```
+
+```{r, include=FALSE}
+
+FullTest2<-FullTest
+FullTest2$species_latin<-FullTest2$Species
+FullTest2<-mutate(FullTest2,species_latin=str_replace(species_latin,'Black field cricket','Teleogryllus_commodus'))
+FullTest2<-mutate(FullTest2,species_latin=str_replace(species_latin,'Gelada','Theropithecus_gelada'))
+FullTest2<-mutate(FullTest2,species_latin=str_replace(species_latin,'Green tree frog','Dryophytes_cinereus'))
+FullTest2<-mutate(FullTest2,species_latin=str_replace(species_latin,'Zebra finch','Taeniopygia_guttata'))
+FullTest2<-mutate(FullTest2,species_latin=str_replace(species_latin,'Tungara frog','Engystomops_pustulosus'))
+FullTest2<-mutate(FullTest2,species_latin=str_replace(species_latin,'Pacific field cricket','Teleogryllus_oceanicus'))
+FullTest2<-mutate(FullTest2,species_latin=str_replace(species_latin,'Cope gray treefrog','Dryophytes_chrysoscelis'))
+FullTest2<-mutate(FullTest2,species_latin=str_replace(species_latin,'Song sparrow','Melospiza_melodia'))
+FullTest2<-mutate(FullTest2,species_latin=str_replace(species_latin,'Fruitfly','Drosophila_melanogaster'))
+FullTest2<-mutate(FullTest2,species_latin=str_replace(species_latin,'Bow-winged grasshopper','Chorthippus_biguttulus'))
+FullTest2<-mutate(FullTest2,species_latin=str_replace(species_latin,'Canary','Serinus_canaria'))
+FullTest2<-mutate(FullTest2,species_latin=str_replace(species_latin,'Colorado dwarf frog','Engystomops_coloradorum'))
+FullTest2<-mutate(FullTest2,species_latin=str_replace(species_latin,'Singing mouse','Scotinomys_teguina'))
+FullTest2<-mutate(FullTest2,species_latin=str_replace(species_latin,'Swamp sparrow','Melospiza_georgiana'))
+FullTest2<-mutate(FullTest2,species_latin=str_replace(species_latin,'Midwife toad','Alytes_obstetricans'))
+FullTest2<-mutate(FullTest2,species_latin=str_replace(species_latin,'Gray treefrog','Dryophytes_versicolor'))
+FullTest2<-mutate(FullTest2,species_latin=str_replace(species_latin,'Hourglass treefrog','Dendropsophus_ebraccatus'))
+FullTest2<-mutate(FullTest2,species_latin=str_replace(species_latin,'Prairie warbler','Setophaga_discolor'))
+FullTest2<-mutate(FullTest2,species_latin=str_replace(species_latin,'Seychelles warbler','Acrocephalus_sechellensis'))
+FullTest2<-mutate(FullTest2,species_latin=str_replace(species_latin,'Elk','Cervus_canadensis'))
+
+
+FullTest2_Sum1<-summarySE(FullTest2, measurevar="correct", groupvars=c("StimID","species_latin","Category"))
+FullTest2_Sum2<-summarySE(FullTest2_Sum1, measurevar="correct", groupvars=c("species_latin","Category"))
+
+Tree<-read.newick(here::here("", "SpeciesList.nwk"))
+row.names(FullTest2_Sum2)<-FullTest2_Sum2$species_latin
+cleanedData<- clean.data(FullTest2_Sum2, Tree)
+prunedTree<-cleanedData$tree
+prunedData<-cleanedData$data
+
+trait<-prunedData$correct
+names(trait)<-prunedData$species_latin
+limit<-c(0.25,0.75)
+obj<-contMap(prunedTree,trait,plot=FALSE,lims=limit)
+obj<-setMap(obj,col=brewer.pal(n = 11, name = "BrBG"))
+plot(obj,ftype="off",direction="downwards",outline=TRUE,lwd=4,leg.txt="trait",legend=0)
+
+grab_grob <- function(){
+  grid.echo()
+  grid.grab()
+}
+
+F1B1<-grab_grob()
+
+```
+
+```{r, include=FALSE}
+
+Reaction<-subset(FullTest,rt<5000)
+Reaction$sqrt_rt<-sqrt(Reaction$rt)
+Reaction<-mutate(Reaction,zsqrt_rt=(sqrt_rt - mean(sqrt_rt))/sd(sqrt_rt))
+
+rt_model<-glmer(correct ~ zsqrt_rt+(1|StimID)+(1|Species)+(1|user_id),family=binomial,data=Reaction,control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=2e5)))
+rt_summary<-summary(rt_model)
+rt_anova<-Anova(rt_model)
+
+rtStimSum2<-summarySE(data=Reaction,measurevar="sqrt_rt",groupvars=c("correct"))
+F1C<-ggplot(data=rtStimSum2,aes(x=as.factor(correct),y=sqrt_rt^2))+
+  #geom_boxplot(outlier.shape=NA)+
+  #geom_violin()+
+  #geom_jitter(aes(color=Category),height=0,width=0.25,alpha=0.7)+
+  #geom_line(aes(group=StimID),alpha=0.15)+
+  geom_point()+
+  geom_errorbar(data=rtStimSum2,aes(ymin=(sqrt_rt-se)^2, ymax=(sqrt_rt+se)^2),width=.1,) +
+  #geom_bar(data=rtStimSum2,stat="identity",width=0.8)+
+  scale_fill_manual(values=c(color_bird,color_frog,color_insect,color_mammal),name="category") +
+  scale_color_manual(values=c(color_bird,color_frog,color_insect,color_mammal),name="category") +
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"),
+        aspect.ratio = 2,
+        axis.text = element_text(size = 10),
+        axis.title = element_text(size = 12),
+  )
+
+meanCorrect<-mean(subset(Reaction,correct==1)$sqrt_rt)^2
+meanIncorrect<-mean(subset(Reaction,correct==0)$sqrt_rt)^2
+rtDiff<-meanIncorrect-meanCorrect
+
+rt2<-FullTest %>%
+  subset(rt<5000) %>%
+  dplyr::group_by(Species,StimID,Category) %>%
+  dplyr::mutate(rt=if_else(correct==1,rt,NA)) %>%
+  dplyr::summarize(meanRT=mean(rt,na.rm=TRUE),meanCorrect=mean(correct),meanAnimal=mean(AnimalStrength,na.rm=TRUE))
+
+ggplot(data=rt2,aes(y=meanRT, x=meanAnimal)) + 
+  geom_smooth(method="lm",se=TRUE,color="black")+
+  geom_point(aes(color=Category),size=2,alpha=0.5) +
+  scale_color_manual(values=c(color_bird,color_frog,color_insect,color_mammal),name="category") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"),
+        aspect.ratio = 1,
+        axis.text = element_text(size = 8),
+        axis.title = element_text(size = 10),
+        legend.position="none"
+  )
+
+
+```
+
+
+```{r, include=FALSE}
+################FIND DUPLICATES
+duplicates <- FullTest %>%
+  mutate(id_stim=paste(user_id,StimID)) %>%
+  group_by(id_stim) %>%
+  filter(n() > 1) %>%
+  ungroup()
+
+dupe_summary<-summarySE(duplicates, measurevar="correct", groupvars=c("StimID","user_id","Species","Category"))
+dupe_summary2<-left_join(dupe_summary,sig_bystim,by="StimID")
+dupe_summary2<-mutate(dupe_summary2,sig=if_else(p<0.05,TRUE,FALSE))
+dupe_summary3<-subset(dupe_summary2,N==2)
+dupe_summary3<-mutate(dupe_summary3,agreement=if_else(correct==0.5,0,1))
+dupe_summary4<-summarySE(dupe_summary3, measurevar="agreement", groupvars=c("sig","StimID","Species","Category"))
+
+F1D<-ggplot(dupe_summary4, aes(x=sig, y=agreement)) + 
+  geom_jitter(aes(color=Category),shape=16,width=0.2,height=0,size=1.5,alpha=0.5) +
+  geom_boxplot(outlier.shape=NA,alpha=0.2)+
+  #geom_pointrange(aes(ymin = correct2-se, ymax = correct2+se, color=Category),position=position_jitter(width=0.2,height=0),size=.3) +
+  geom_hline(yintercept=0.5, linetype="dashed", color = "black") +
+  scale_fill_manual(values=c(color_bird,color_frog,color_insect,color_mammal),name="category") +
+  scale_color_manual(values=c(color_bird,color_frog,color_insect,color_mammal),name="category") +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(size = 10),
+        axis.text.x = element_text(angle = -45, vjust = 0.5, hjust=0),
+        axis.title = element_text(size = 12),
+        aspect.ratio=2,
+        legend.position="none"
+  )
+
+intra_by_sig_model<-lmer(agreement~sig+(1|Species),data=dupe_summary4)
+intra_by_sig_anova<-anova(intra_by_sig_model)
+
+intra_model<-lmer(agreement-0.5 ~ 1 + (1|Species),data=dupe_summary4)
+intra_summary<-summary(intra_model)
+
+intra_nonsig_model<-lmer(agreement-0.5 ~ 1 + (1|Species),data=subset(dupe_summary4,sig==FALSE))
+intra_nonsig_summary<-summary(intra_nonsig_model)
+
+intra_sig_model<-lmer(agreement-0.5 ~ 1 + (1|Species),data=subset(dupe_summary4,sig==TRUE))
+intra_sig_summary<-summary(intra_nonsig_model)
+
+```
+
+We analyzed the auditory preferences of a global population of humans (n = `r f(length(unique(FullTest$user_id)))` participants; Fig. S1) across `r f(length(unique(FullTest$StimID)))` pairs of acoustic stimuli from non-human animals (hereafter, animals) with demonstrated conspecific preferences (covering `r f(length(unique(FullTest$Species)))` species; Table 1; n = `r f(nrow(FullTest))` responses). Humans were significantly more likely than chance to select the stimulus preferred by animals across all pairs of stimuli (GLMM: *z* = `r r1(FullModel_summary$coefficients[3])`, *p* `r fp(FullModel_summary$coefficients[4])`; Fig. 1A).
+
+
+The chance of human participants selecting the animal-preferred stimulus significantly and positively correlated with the strength of preference exhibited by animals (GLMM: χ^2^~`r strength_anova$Df`~ = `r r1(strength_anova$Chisq)`, *p* `r fp(strength_anova$'Pr(>Chisq)')`; Fig. 1B), and humans responded significantly faster when they exhibited preferences that were consistent with animal preferences (LMM: χ^2^~`r rt_anova$Df`~ = `r r1(rt_anova$Chisq)`, *p* `r fp(rt_anova$'Pr(>Chisq)')`; Fig. 1C). Further, humans reliably selected the same stimulus when asked to rate the same pair of stimuli twice (LMM: *t*~`r r0(intra_summary$coefficients[3])`~ = `r r1(intra_summary$coefficients[4])`, *p* `r fp(intra_nonsig_summary$coefficients[5])`), even for stimuli where there was not significant agreement across participants (*t*~`r r0(intra_nonsig_summary$coefficients[3])`~ = `r r1(intra_nonsig_summary$coefficients[4])`, *p* `r fp(intra_nonsig_summary$coefficients[5])`; Fig. 1D); this indicates that participants rarely selected at random.
+
+
+
+```{r, include=FALSE}
+
+F1B1<-ggplotify::as.ggplot(F1B1)
+
+F1L <- (F1A/(F1C|F1D))+
+  plot_layout(heights=c(4,3))
+
+F1RB <- (F1B2|F1B3) +
+  plot_layout(widths=c(7,1))
+
+F1R <- (F1B1 / F1RB)+
+  plot_layout()
+
+F1 <- (F1L|F1R)+
+  plot_layout(widths=c(3,7))
+
+
+pdf(file = here::here("viz", "Figure1.pdf"),
+    width = 10, 
+    height = 10) 
+F1
+dev.off()
+
+```
+
+
+
+```{r fig1, echo=FALSE, fig.width=10, fig.height=10, fig.cap="\\textbf{Figure 1 | Humans and other animals share acoustic preferences} Humans and other animals share acoustic preferences. A) Each dot depicts the mean and 95% confidence interval for human responses to a pair of stimuli. Above is a phylogenetic tree, with color depicting the average agreement between humans and the species across all stimulus pairs (teal colors depict agreement, brown colors disagreement). Right are all data pooled with the horizontal bar and whiskers depicting the mean ± 95% confidence interval across all stimuli. (B) There is a significant relationship between the strength of the preference within the animal studies (x-axis) and the percent of humans that agreed with animals (y-axis). Each dot depicts a pair of stimuli, and the trendline is a simple linear correlation ± SE.  (C) Reaction times were significantly faster for trials when the participant selected the stimulus that was preferred by animals (dots and error bars depict the mean ± SE across all trials). Note that, for analysis, we used z-transformed square root values, which were back transformed for visualization. (D) Intra-rater agreement is above chance both for stimulus pairs with significant inter-rater agreement (right) as well as for pairs at chance inter-rater agreement (left). Each dot depicts the mean intra-rater agreement for a stimulus pair. For all panels, colors depict the four larger phylogenetic groups (insects, birds, mammals, and frogs). ^{\\ast}p < 0.05."}
+F1
+```
+
+
+
+
+```{r,include=FALSE}
+
+All_Sum1<-summarySE(data=FullTest,measurevar="correct",groupvars=c("Species","Trait","StimID","Category"))
+traitList<-c("Frequency","Rate","Rhythm","AmplitudeModulation","Adornment","Context","Individuals","Complexity","Development","Manipulated")
+All_Sum1$Trait<-factor(All_Sum1$Trait,levels=traitList)
+F2A<-ggplot(data=All_Sum1,aes(y=correct,x=Trait))+
+  geom_pointrange(aes(ymin = correct-ci, ymax = correct+ci, color=Category), 
+               position=position_jitter(width=0.2,height=0),
+               size=.5,
+                 #linetype='dotted'
+              ) +
+  geom_hline(yintercept=0.5, linetype="dashed", color = "blue") +
+  scale_fill_manual(values=c(color_bird,color_frog,color_insect,color_mammal)) +
+  scale_color_manual(values=c(color_bird,color_frog,color_insect,color_mammal)) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+      panel.background = element_blank(), axis.line = element_line(colour = "black"),
+      #aspect.ratio = 1,
+      axis.text = element_text(size = 8),
+      axis.title = element_text(size = 10),
+      axis.text.x = element_text(angle = -45, vjust = 0.5, hjust=0),
+      legend.position="none")
+
+traitModel<-glmer(correct ~ Trait + (1|StimID) + (1|Species) + (1|user_id), family = binomial('logit'),data=FullTest)
+traitAnova<-Anova(traitModel)
+
+freqModel<-summary(glmer(correct ~ 1 + (1|StimID) + (1|Species) + (1|user_id), family = binomial('logit'),data=subset(FullTest,Trait=="Frequency")))
+rateModel<-summary(glmer(correct ~ 1 + (1|StimID) + (1|Species) + (1|user_id), family = binomial('logit'),data=subset(FullTest,Trait=="Rate")))
+rhythmModel<-summary(glmer(correct ~ 1 + (1|user_id), family = binomial('logit'),data=subset(FullTest,Trait=="Rhythm")))
+AMModel<-summary(glmer(correct ~ 1 + (1|user_id), family = binomial('logit'),data=subset(FullTest,Trait=="AmplitudeModulation")))
+adornModel<-summary(glmer(correct ~ 1 + (1|StimID) + (1|Species) + (1|user_id), family = binomial('logit'),data=subset(FullTest,Trait=="Adornment")))
+contextModel<-summary(glmer(correct ~ 1 + (1|StimID) + (1|user_id), family = binomial('logit'),data=subset(FullTest,Trait=="Context")))
+individualsModel<-summary(glmer(correct ~ 1 + (1|StimID) + (1|Species) + (1|user_id), family = binomial('logit'),data=subset(FullTest,Trait=="Individuals")))
+complexModel<-summary(glmer(correct ~ 1 + (1|StimID) + (1|Species) + (1|user_id), family = binomial('logit'),data=subset(FullTest,Trait=="Complexity")))
+devModel<-summary(glmer(correct ~ 1 + (1|StimID) + (1|Species) + (1|user_id), family = binomial('logit'),data=subset(FullTest,Trait=="Development")))
+manModel<-summary(glmer(correct ~ 1 + (1|user_id), family = binomial('logit'),data=subset(FullTest,Trait=="Manipulated")))
+
+nonsig_trait_pList<-c(rateModel$coefficients[4],rhythmModel$coefficients[4],AMModel$coefficients[4],contextModel$coefficients[4],complexModel$coefficients[4],devModel$coefficients[4],manModel$coefficients[4])
+
+```
+
+
+
+```{r, include=FALSE}
+
+Spec<-summarySE(FullTest, measurevar="correct", groupvars=c("StimID","Species","Category","GoodAudio","BadAudio","Trait"))
+Features<-read_excel(here("","AcousticFeatures.xlsx"))
+
+goodFeat<-Features
+colnames(goodFeat) <- paste(colnames(goodFeat), "_good",sep="")
+names(goodFeat)[1] <- "GoodAudio"
+
+badFeat<-Features
+colnames(badFeat) <- paste(colnames(badFeat), "_bad",sep="")
+names(badFeat)[1] <- "BadAudio"
+
+Spec<-left_join(Spec,goodFeat,by="GoodAudio")
+Spec<-left_join(Spec,badFeat,by="BadAudio")
+
+Spec$dummy<-1
+
+
+
+##################################################################
+##############              DF                ####################
+##################################################################
+Spec$DFDiff<-Spec$DF_good-Spec$DF_bad
+model<-lmer(correct~DFDiff+(1|Species),data=subset(Spec,DFDiff>-5000))
+anova(model)
+acousticTable<-data.frame(feature="DF",comparison="Diff",anova=anova(model))
+
+Spec<-mutate(Spec,zDFDiff=(DFDiff - mean(DFDiff))/sd(DFDiff))
+DFest<-summary(model)$coeff[2,1]
+DFstd<-summary(model)$coeff[2,2]
+
+
+
+Spec<-mutate(Spec,
+             DFPref=if_else(DFDiff<0,0.5+(0.5-correct),correct),
+             DFPref2=if_else(correct>0.5,DFDiff,-DFDiff),
+             human_DF_good=if_else(correct>0.5,DF_good,DF_bad),
+             human_DF_bad=if_else(correct>0.5,DF_bad,DF_good))
+
+tmp<-subset(Spec,DFDiff>-5000)
+tmp2<-tmp |> 
+  dplyr::select(StimID,Species,DF_good,DF_bad) |>
+  pivot_longer(cols=c(DF_good,DF_bad), names_to = "quality", values_to = "feature")
+
+model<-lmer(feature~quality + (1|StimID) + (1|Species),data=tmp2)
+anova(model)
+
+acousticTable<-rbind(acousticTable,data.frame(feature="DF",comparison="Animals",anova=anova(model)))
+
+tmp2<-tmp |> 
+  dplyr::select(StimID,Species,human_DF_good,human_DF_bad) |>
+  pivot_longer(cols=c(human_DF_good,human_DF_bad), names_to = "quality", values_to = "feature")
+
+model<-lmer(feature~quality + (1|StimID) + (1|Species),data=tmp2)
+anova(model)
+acousticTable<-rbind(acousticTable,data.frame(feature="DF",comparison="Humans",anova=anova(model)))
+
+
+
+##################################################################
+##############              DURATION          ####################
+##################################################################
+Spec$DurDiff<-Spec$Duration_good-Spec$Duration_bad
+model<-lmer(correct~DurDiff+(1|Species),data=Spec)
+anova(model)
+acousticTable<-rbind(acousticTable,data.frame(feature="duration",comparison="Diff",anova=anova(model)))
+
+Spec<-mutate(Spec,zDurDiff=(DurDiff - mean(DurDiff))/sd(DurDiff))
+model<-lmer(correct~zDurDiff+(1|Species),data=Spec)
+anova(model)
+DurEst<-summary(model)$coeff[2,1]
+DurStd<-summary(model)$coeff[2,2]
+
+Spec<-mutate(Spec,
+             DurPref=if_else(DurDiff<0,0.5+(0.5-correct),correct),
+             DurPref2=if_else(correct>0.5,DurDiff,-DurDiff),
+             human_Dur_good=if_else(correct>0.5,Duration_good,Duration_bad),
+             human_Dur_bad=if_else(correct>0.5,Duration_bad,Duration_good))
+
+tmp<-Spec
+tmp2<-tmp |> 
+  dplyr::select(StimID,Species,Duration_good,Duration_bad) |>
+  pivot_longer(cols=c(Duration_good,Duration_bad), names_to = "quality", values_to = "feature")
+
+model<-lmer(feature~quality + (1|StimID) + (1|Species),data=tmp2)
+anova(model)
+acousticTable<-rbind(acousticTable,data.frame(feature="duration",comparison="Animals",anova=anova(model)))
+
+tmp2<-tmp |> 
+  dplyr::select(StimID,Species,human_Dur_good,human_Dur_bad) |>
+  pivot_longer(cols=c(human_Dur_good,human_Dur_bad), names_to = "quality", values_to = "feature")
+
+model<-lmer(feature~quality + (1|StimID) + (1|Species),data=tmp2)
+anova(model)
+acousticTable<-rbind(acousticTable,data.frame(feature="duration",comparison="Humans",anova=anova(model)))
+
+##################################################################
+##############              PITCH             ####################
+##################################################################
+Spec$PitchDiff<-Spec$Pitch_good-Spec$Pitch_bad
+model<-lmer(correct~PitchDiff+(1|Species),data=subset(Spec,!is.na(PitchDiff)))
+anova(model)
+acousticTable<-rbind(acousticTable,data.frame(feature="pitch",comparison="Diff",anova=anova(model)))
+
+Spec<-mutate(Spec,zPitchDiff=if_else(is.na(PitchDiff),NA,(PitchDiff - mean(PitchDiff,na.rm=TRUE))/sd(PitchDiff,na.rm=TRUE)))
+model<-lmer(correct~zPitchDiff+(1|Species),data=subset(Spec,!is.na(zPitchDiff)))
+anova(model)
+PitchEst<-summary(model)$coeff[2,1]
+PitchStd<-summary(model)$coeff[2,2]
+
+Spec<-mutate(Spec,
+             PitchPref=if_else(PitchDiff<0,0.5+(0.5-correct),correct),
+             PitchPref2=if_else(correct>0.5,PitchDiff,-PitchDiff),
+             human_Pitch_good=if_else(correct>0.5,Pitch_good,Pitch_bad),
+             human_Pitch_bad=if_else(correct>0.5,Pitch_bad,Pitch_good))
+
+tmp<-Spec
+tmp2<-tmp |> 
+  dplyr::select(StimID,Species,Pitch_good,Pitch_bad) |>
+  pivot_longer(cols=c(Pitch_good,Pitch_bad), names_to = "quality", values_to = "feature")
+
+model<-lmer(feature~quality + (1|StimID) + (1|Species),data=subset(tmp2,!is.na(feature)))
+anova(model)
+acousticTable<-rbind(acousticTable,data.frame(feature="pitch",comparison="Animals",anova=anova(model)))
+
+tmp2<-tmp |> 
+  dplyr::select(StimID,Species,human_Pitch_good,human_Pitch_bad) |>
+  pivot_longer(cols=c(human_Pitch_good,human_Pitch_bad), names_to = "quality", values_to = "feature")
+
+model<-lmer(feature~quality + (1|StimID) + (1|Species),data=subset(tmp2,!is.na(feature)))
+anova(model)
+acousticTable<-rbind(acousticTable,data.frame(feature="pitch",comparison="Humans",anova=anova(model)))
+
+##################################################################
+##############              AMVariance        ####################
+##################################################################
+Spec$AMDiff<-Spec$AMVariance_good-Spec$AMVariance_bad
+model<-lmer(correct~AMDiff+(1|Species),data=Spec)
+anova(model)
+acousticTable<-rbind(acousticTable,data.frame(feature="AM_var",comparison="Diff",anova=anova(model)))
+
+Spec<-mutate(Spec,zAMDiff=(AMDiff - mean(AMDiff))/sd(AMDiff))
+model<-lmer(correct~zAMDiff+(1|Species),data=Spec)
+anova(model)
+AMest<-summary(model)$coeff[2,1]
+AMstd<-summary(model)$coeff[2,2]
+
+Spec<-mutate(Spec,
+             AMPref=if_else(AMDiff<0,0.5+(0.5-correct),correct),
+             AMPref2=if_else(correct>0.5,AMDiff,-AMDiff),
+             human_AM_good=if_else(correct>0.5,AMVariance_good,AMVariance_bad),
+             human_AM_bad=if_else(correct>0.5,AMVariance_bad,AMVariance_good))
+
+tmp<-Spec
+tmp2<-tmp |> 
+  dplyr::select(StimID,Species,AMVariance_good,AMVariance_bad) |>
+  pivot_longer(cols=c(AMVariance_good,AMVariance_bad), names_to = "quality", values_to = "feature")
+
+model<-lmer(feature~quality + (1|StimID) + (1|Species),data=tmp2)
+anova(model)
+acousticTable<-rbind(acousticTable,data.frame(feature="AM_var",comparison="Animals",anova=anova(model)))
+
+tmp2<-tmp |> 
+  dplyr::select(StimID,Species,human_AM_good,human_AM_bad) |>
+  pivot_longer(cols=c(human_AM_good,human_AM_bad), names_to = "quality", values_to = "feature")
+
+model<-lmer(feature~quality + (1|StimID) + (1|Species),data=tmp2)
+anova(model)
+acousticTable<-rbind(acousticTable,data.frame(feature="AM_var",comparison="Humans",anova=anova(model)))
+
+##################################################################
+##############              SPECTRALCENTROID  ####################
+##################################################################
+Spec$CentDiff<-Spec$SpectralCentroid_good-Spec$SpectralCentroid_bad
+model<-lmer(correct~CentDiff+(1|Species),data=subset(Spec,CentDiff>-1000))
+anova(model)
+acousticTable<-rbind(acousticTable,data.frame(feature="spectral_centroid",comparison="Diff",anova=anova(model)))
+ggplot(data=subset(Spec,CentDiff>-1000),aes(y=correct, x=CentDiff)) + 
+  geom_smooth(method="lm",se=TRUE,color="black")+
+  geom_point(aes(color=Category), 
+               size=3,
+              ) +
+  scale_color_manual(values=c(color_bird,color_frog,color_insect,color_mammal),name="category") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"),
+        aspect.ratio = 1,
+        axis.text = element_text(size = 8),
+        axis.title = element_text(size = 10),
+        #legend.position="none"
+  )
+
+Spec<-mutate(Spec,zCentDiff=if_else(is.na(CentDiff),NA,(CentDiff - mean(CentDiff,na.rm=TRUE))/sd(CentDiff,na.rm=TRUE)))
+model<-lmer(correct~zCentDiff+(1|Species),data=subset(Spec,CentDiff>-1000))
+anova(model)
+CentEst<-summary(model)$coeff[2,1]
+CentStd<-summary(model)$coeff[2,2]
+
+Spec<-mutate(Spec,
+             CentPref=if_else(CentDiff<0,0.5+(0.5-correct),correct),
+             CentPref2=if_else(correct>0.5,CentDiff,-CentDiff),
+             human_Cent_good=if_else(correct>0.5,SpectralCentroid_good,SpectralCentroid_bad),
+             human_Cent_bad=if_else(correct>0.5,SpectralCentroid_bad,SpectralCentroid_good))
+
+
+ggplot(data=subset(Spec,CentDiff>-1000),aes(y=CentDiff, x=dummy)) + 
+  geom_boxplot(outlier.shape=NA,width=0.8)+
+  geom_jitter(aes(color=Category),size=2,width=0.4,height=0,alpha=0.75) +
+  geom_boxplot(aes(y=CentPref2,x=dummy+1.5),outlier.shape=NA,width=0.8)+
+  geom_jitter(aes(y=CentPref2,x=dummy+1.5,color=Category),size=2,width=0.4,height=0,alpha=0.75) +
+  geom_hline(yintercept=0.0, linetype="dashed", color = "blue")+
+  scale_color_manual(values=c(color_bird,color_frog,color_insect,color_mammal),name="category") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"),
+        aspect.ratio = 3,
+        axis.text = element_text(size = 8),
+        axis.title = element_text(size = 10),
+        #legend.position="none"
+  )
+
+tmp<-subset(Spec,CentDiff>-1000)
+tmp2<-tmp |> 
+  dplyr::select(StimID,Species,SpectralCentroid_good,SpectralCentroid_bad) |>
+  pivot_longer(cols=c(SpectralCentroid_good,SpectralCentroid_bad), names_to = "quality", values_to = "feature")
+
+model<-lmer(feature~quality + (1|StimID) + (1|Species),data=tmp2)
+anova(model)
+acousticTable<-rbind(acousticTable,data.frame(feature="spectral_centroid",comparison="Animals",anova=anova(model)))
+
+tmp2<-tmp |> 
+  dplyr::select(StimID,Species,human_Cent_good,human_Cent_bad) |>
+  pivot_longer(cols=c(human_Cent_good,human_Cent_bad), names_to = "quality", values_to = "feature")
+
+model<-lmer(feature~quality + (1|StimID) + (1|Species),data=tmp2)
+anova(model)
+acousticTable<-rbind(acousticTable,data.frame(feature="spectral_centroid",comparison="Humans",anova=anova(model)))
+
+##################################################################
+##############              SHANNON           ####################
+##################################################################
+Spec$ShanDiff<-Spec$ShannonEntropy_good-Spec$ShannonEntropy_bad
+model<-lmer(correct~ShanDiff+(1|Species),data=Spec)
+anova(model)
+acousticTable<-rbind(acousticTable,data.frame(feature="shannon_entropy",comparison="Diff",anova=anova(model)))
+
+Spec<-mutate(Spec,zShanDiff=(ShanDiff - mean(ShanDiff))/sd(ShanDiff))
+model<-lmer(correct~zShanDiff+(1|Species),data=Spec)
+anova(model)
+ShanEst<-summary(model)$coeff[2,1]
+ShanStd<-summary(model)$coeff[2,2]
+
+Spec<-mutate(Spec,
+             ShanPref=if_else(ShanDiff<0,0.5+(0.5-correct),correct),
+             ShanPref2=if_else(correct>0.5,ShanDiff,-ShanDiff),
+             human_Shan_good=if_else(correct>0.5,ShannonEntropy_good,ShannonEntropy_bad),
+             human_Shan_bad=if_else(correct>0.5,ShannonEntropy_bad,ShannonEntropy_good))
+
+tmp<-Spec
+tmp2<-tmp |> 
+  dplyr::select(StimID,Species,ShannonEntropy_good,ShannonEntropy_bad) |>
+  pivot_longer(cols=c(ShannonEntropy_good,ShannonEntropy_bad), names_to = "quality", values_to = "feature")
+
+model<-lmer(feature~quality + (1|StimID) + (1|Species),data=tmp2)
+anova(model)
+acousticTable<-rbind(acousticTable,data.frame(feature="shannon_entropy",comparison="Animals",anova=anova(model)))
+
+tmp2<-tmp |> 
+  dplyr::select(StimID,Species,human_Shan_good,human_Shan_bad) |>
+  pivot_longer(cols=c(human_Shan_good,human_Shan_bad), names_to = "quality", values_to = "feature")
+
+model<-lmer(feature~quality + (1|StimID) + (1|Species),data=tmp2)
+anova(model)
+acousticTable<-rbind(acousticTable,data.frame(feature="shannon_entropy",comparison="Humans",anova=anova(model)))
+
+##################################################################
+##############              ROUGHNESS         ####################
+##################################################################
+Spec$RoughDiff<-sqrt(Spec$Roughness_good)-sqrt(Spec$Roughness_bad)
+model<-lmer(correct~RoughDiff+(1|Species),data=subset(Spec,abs(RoughDiff)<50))
+anova(model)
+acousticTable<-rbind(acousticTable,data.frame(feature="roughness",comparison="Diff",anova=anova(model)))
+
+Spec<-mutate(Spec,zRoughDiff=(RoughDiff - mean(RoughDiff))/sd(RoughDiff))
+model<-lmer(correct~zRoughDiff+(1|Species),data=subset(Spec,abs(RoughDiff)<50))
+anova(model)
+RoughEst<-summary(model)$coeff[2,1]
+RoughStd<-summary(model)$coeff[2,2]
+
+Spec<-mutate(Spec,
+             RoughPref=if_else(RoughDiff<0,0.5+(0.5-correct),correct),
+             RoughPref2=if_else(correct>0.5,RoughDiff,-RoughDiff),
+             human_Rough_good=if_else(correct>0.5,Roughness_good,Roughness_bad),
+             human_Rough_bad=if_else(correct>0.5,Roughness_bad,Roughness_good))
+
+tmp<-subset(Spec,abs(RoughDiff)<50)
+tmp2<-tmp |> 
+  dplyr::select(StimID,Species,Roughness_good,Roughness_bad) |>
+  pivot_longer(cols=c(Roughness_good,Roughness_bad), names_to = "quality", values_to = "feature")
+
+model<-lmer(feature~quality + (1|StimID) + (1|Species),data=tmp2)
+anova(model)
+acousticTable<-rbind(acousticTable,data.frame(feature="roughness",comparison="Animals",anova=anova(model)))
+
+tmp2<-tmp |> 
+  dplyr::select(StimID,Species,human_Rough_good,human_Rough_bad) |>
+  pivot_longer(cols=c(human_Rough_good,human_Rough_bad), names_to = "quality", values_to = "feature")
+
+model<-lmer(feature~quality + (1|StimID) + (1|Species),data=tmp2)
+anova(model)
+acousticTable<-rbind(acousticTable,data.frame(feature="roughness",comparison="Humans",anova=anova(model)))
+
+##################################################################
+##############              ATTACK SLOPE      ####################
+##################################################################
+Spec$AttackDiff<-Spec$AttackSlope_good-Spec$AttackSlope_bad
+model<-lmer(correct~AttackDiff+(1|Species),data=subset(Spec,AttackDiff<30))
+anova(model)
+acousticTable<-rbind(acousticTable,data.frame(feature="attack_slope",comparison="Diff",anova=anova(model)))
+
+Spec<-mutate(Spec,zAttackDiff=if_else(is.na(AttackDiff),NA,(AttackDiff - mean(AttackDiff,na.rm=TRUE))/sd(AttackDiff,na.rm=TRUE)))
+model<-lmer(correct~zAttackDiff+(1|Species),data=subset(Spec,AttackDiff<30))
+anova(model)
+AttackEst<-summary(model)$coeff[2,1]
+AttackStd<-summary(model)$coeff[2,2]
+
+Spec<-mutate(Spec,
+             AttackPref=if_else(AttackDiff<0,0.5+(0.5-correct),correct),
+             AttackPref2=if_else(correct>0.5,AttackDiff,-AttackDiff),
+             human_Attack_good=if_else(correct>0.5,AttackSlope_good,AttackSlope_bad),
+             human_Attack_bad=if_else(correct>0.5,AttackSlope_bad,AttackSlope_good))
+
+tmp<-subset(Spec,AttackDiff<30)
+
+tmp2<-tmp |> 
+  dplyr::select(StimID,Species,AttackSlope_good,AttackSlope_bad) |>
+  pivot_longer(cols=c(AttackSlope_good,AttackSlope_bad), names_to = "quality", values_to = "feature")
+
+model<-lmer(feature~quality + (1|StimID) + (1|Species),data=tmp2)
+anova(model)
+acousticTable<-rbind(acousticTable,data.frame(feature="attack_slope",comparison="Animals",anova=anova(model)))
+
+tmp2<-tmp |> 
+  dplyr::select(StimID,Species,human_Attack_good,human_Attack_bad) |>
+  pivot_longer(cols=c(human_Attack_good,human_Attack_bad), names_to = "quality", values_to = "feature")
+
+model<-lmer(feature~quality + (1|StimID) + (1|Species),data=tmp2)
+anova(model)
+acousticTable<-rbind(acousticTable,data.frame(feature="attack_slope",comparison="Humans",anova=anova(model)))
+
+##################################################################
+##############              RMS               ####################
+##################################################################
+Spec$RMSDiff<-Spec$rmsEnergy_good-Spec$rmsEnergy_bad
+model<-lmer(correct~RMSDiff+(1|Species),data=Spec)
+anova(model)
+acousticTable<-rbind(acousticTable,data.frame(feature="RMS",comparison="Diff",anova=anova(model)))
+
+Spec<-mutate(Spec,zRMSDiff=(RMSDiff - mean(RMSDiff))/sd(RMSDiff))
+model<-lmer(correct~zRMSDiff+(1|Species),data=Spec)
+anova(model)
+RMSEst<-summary(model)$coeff[2,1]
+RMSStd<-summary(model)$coeff[2,2]
+
+Spec<-mutate(Spec,
+             RMSPref=if_else(RMSDiff<0,0.5+(0.5-correct),correct),
+             RMSPref2=if_else(correct>0.5,RMSDiff,-RMSDiff),
+             human_RMS_good=if_else(correct>0.5,rmsEnergy_good,rmsEnergy_bad),
+             human_RMS_bad=if_else(correct>0.5,rmsEnergy_bad,rmsEnergy_good))
+
+tmp<-Spec
+tmp2<-tmp |> 
+  dplyr::select(StimID,Species,rmsEnergy_good,rmsEnergy_bad) |>
+  pivot_longer(cols=c(rmsEnergy_good,rmsEnergy_bad), names_to = "quality", values_to = "feature")
+
+model<-lmer(feature~quality + (1|StimID) + (1|Species),data=tmp2)
+anova(model)
+acousticTable<-rbind(acousticTable,data.frame(feature="RMS",comparison="Animals",anova=anova(model)))
+
+tmp2<-tmp |> 
+  dplyr::select(StimID,Species,human_RMS_good,human_RMS_bad) |>
+  pivot_longer(cols=c(human_RMS_good,human_RMS_bad), names_to = "quality", values_to = "feature")
+
+model<-lmer(feature~quality + (1|StimID) + (1|Species),data=tmp2)
+anova(model)
+acousticTable<-rbind(acousticTable,data.frame(feature="RMS",comparison="Humans",anova=anova(model)))
+
+##################################################################
+##############              BRIGHTNESS        ####################
+##################################################################
+Spec$BrightDiff<-Spec$Brightness_good-Spec$Brightness_bad
+hist(Spec$Brightness_bad)
+model<-lmer(correct~BrightDiff+(1|Species),data=subset(Spec,Brightness_bad<0.8))
+anova(model)
+acousticTable<-rbind(acousticTable,data.frame(feature="brightness",comparison="Diff",anova=anova(model)))
+
+ggplot(data=subset(Spec,Brightness_bad<0.8),aes(y=correct, x=BrightDiff)) + 
+  geom_smooth(method="lm",se=TRUE,color="black")+
+  geom_point(aes(color=Category), 
+               size=3,
+              ) +
+  scale_color_manual(values=c(color_frog,color_insect,color_mammal),name="category") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"),
+        aspect.ratio = 1,
+        axis.text = element_text(size = 8),
+        axis.title = element_text(size = 10),
+        #legend.position="none"
+  )
+
+Spec<-mutate(Spec,zBrightDiff=if_else(is.na(BrightDiff),NA,(BrightDiff - mean(BrightDiff,na.rm=TRUE))/sd(BrightDiff,na.rm=TRUE)))
+model<-lmer(correct~zBrightDiff+(1|Species),data=subset(Spec,Brightness_bad<0.8))
+anova(model)
+BrightEst<-summary(model)$coeff[2,1]
+BrightStd<-summary(model)$coeff[2,2]
+
+Spec<-mutate(Spec,
+             BrightPref=if_else(BrightDiff<0,0.5+(0.5-correct),correct),
+             BrightPref2=if_else(correct>0.5,BrightDiff,-BrightDiff),
+             human_Bright_good=if_else(correct>0.5,Brightness_good,Brightness_bad),
+             human_Bright_bad=if_else(correct>0.5,Brightness_bad,Brightness_good))
+
+
+ggplot(data=subset(Spec,Brightness_bad<0.8),aes(y=BrightDiff, x=dummy)) + 
+  geom_boxplot(outlier.shape=NA,width=0.8)+
+  geom_jitter(aes(color=Category),size=2,width=0.4,height=0,alpha=0.75) +
+  geom_boxplot(aes(y=BrightPref2,x=dummy+1.5),outlier.shape=NA,width=0.8)+
+  geom_jitter(aes(y=BrightPref2,x=dummy+1.5,color=Category),size=2,width=0.4,height=0,alpha=0.75) +
+  geom_hline(yintercept=0.0, linetype="dashed", color = "blue")+
+  scale_color_manual(values=c(color_frog,color_insect,color_mammal),name="category") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"),
+        aspect.ratio = 3,
+        axis.text = element_text(size = 8),
+        axis.title = element_text(size = 10),
+        #legend.position="none"
+  )
+
+tmp<-subset(Spec,Brightness_bad<0.8)
+tmp2<-tmp |> 
+  dplyr::select(StimID,Species,Brightness_good,Brightness_bad) |>
+  pivot_longer(cols=c(Brightness_good,Brightness_bad), names_to = "quality", values_to = "feature")
+
+model<-lmer(feature~quality + (1|StimID) + (1|Species),data=tmp2)
+anova(model)
+acousticTable<-rbind(acousticTable,data.frame(feature="brightness",comparison="Animals",anova=anova(model)))
+
+tmp2<-tmp |> 
+  dplyr::select(StimID,Species,human_Bright_good,human_Bright_bad) |>
+  pivot_longer(cols=c(human_Bright_good,human_Bright_bad), names_to = "quality", values_to = "feature")
+
+model<-lmer(feature~quality + (1|StimID) + (1|Species),data=tmp2)
+anova(model)
+acousticTable<-rbind(acousticTable,data.frame(feature="brightness",comparison="Humans",anova=anova(model)))
+
+
+##################################################################
+##############              SKEW              ####################
+##################################################################
+Spec$SkewDiff<-Spec$SpectralSkewness_good-Spec$SpectralSkewness_bad
+model<-lmer(correct~SkewDiff+(1|Species),data=Spec)
+anova(model)
+acousticTable<-rbind(acousticTable,data.frame(feature="spectral_skewness",comparison="Diff",anova=anova(model)))
+
+Spec<-mutate(Spec,zSkewDiff=(SkewDiff - mean(SkewDiff))/sd(SkewDiff))
+model<-lmer(correct~zSkewDiff+(1|Species),data=Spec)
+anova(model)
+SkewEst<-summary(model)$coeff[2,1]
+SkewStd<-summary(model)$coeff[2,2]
+
+Spec<-mutate(Spec,
+             SkewPref=if_else(SkewDiff<0,0.5+(0.5-correct),correct),
+             SkewPref2=if_else(correct>0.5,SkewDiff,-SkewDiff),
+             human_Skew_good=if_else(correct>0.5,SpectralSkewness_good,SpectralSkewness_bad),
+             human_Skew_bad=if_else(correct>0.5,SpectralSkewness_bad,SpectralSkewness_good))
+
+model<-lmer(SkewPref~SkewDiff+(1|Species),data=Spec)
+anova(model)
+
+tmp<-Spec
+tmp2<-tmp |> 
+  dplyr::select(StimID,Species,SpectralSkewness_good,SpectralSkewness_bad) |>
+  pivot_longer(cols=c(SpectralSkewness_good,SpectralSkewness_bad), names_to = "quality", values_to = "feature")
+
+model<-lmer(feature~quality + (1|StimID) + (1|Species),data=tmp2)
+anova(model)
+acousticTable<-rbind(acousticTable,data.frame(feature="spectral_skewness",comparison="Animals",anova=anova(model)))
+
+tmp2<-tmp |> 
+  dplyr::select(StimID,Species,human_Skew_good,human_Skew_bad) |>
+  pivot_longer(cols=c(human_Skew_good,human_Skew_bad), names_to = "quality", values_to = "feature")
+
+model<-lmer(feature~quality + (1|StimID) + (1|Species),data=tmp2)
+anova(model)
+acousticTable<-rbind(acousticTable,data.frame(feature="spectral_skewness",comparison="Humans",anova=anova(model)))
+
+
+##################################################################
+##############              SPREAD            ####################
+##################################################################
+Spec$SpreadDiff<-Spec$SpectralSpread_good-Spec$SpectralSpread_bad
+model<-lmer(correct~SpreadDiff+(1|Species),data=subset(Spec,SpreadDiff>-1000))
+anova(model)
+acousticTable<-rbind(acousticTable,data.frame(feature="spectral_spread",comparison="Diff",anova=anova(model)))
+
+Spec<-mutate(Spec,zSpreadDiff=(SpreadDiff - mean(SpreadDiff))/sd(SpreadDiff))
+model<-lmer(correct~zSpreadDiff+(1|Species),data=subset(Spec,SpreadDiff>-1000))
+anova(model)
+SpreadEst<-summary(model)$coeff[2,1]
+SpreadStd<-summary(model)$coeff[2,2]
+
+Spec<-mutate(Spec,
+             SpreadPref=if_else(SpreadDiff<0,0.5+(0.5-correct),correct),
+             SpreadPref2=if_else(correct>0.5,SpreadDiff,-SpreadDiff),
+             human_Spread_good=if_else(correct>0.5,SpectralSpread_good,SpectralSpread_bad),
+             human_Spread_bad=if_else(correct>0.5,SpectralSpread_bad,SpectralSpread_good))
+
+tmp<-subset(Spec,SpreadDiff>-1000)
+
+tmp2<-tmp |> 
+  dplyr::select(StimID,Species,SpectralSpread_good,SpectralSpread_bad) |>
+  pivot_longer(cols=c(SpectralSpread_good,SpectralSpread_bad), names_to = "quality", values_to = "feature")
+
+model<-lmer(feature~quality + (1|StimID) + (1|Species),data=tmp2)
+anova(model)
+acousticTable<-rbind(acousticTable,data.frame(feature="spectral_spread",comparison="Animals",anova=anova(model)))
+
+tmp2<-tmp |> 
+  dplyr::select(StimID,Species,human_Spread_good,human_Spread_bad) |>
+  pivot_longer(cols=c(human_Spread_good,human_Spread_bad), names_to = "quality", values_to = "feature")
+
+model<-lmer(feature~quality + (1|StimID) + (1|Species),data=tmp2)
+anova(model)
+acousticTable<-rbind(acousticTable,data.frame(feature="spectral_spread",comparison="Humans",anova=anova(model)))
+
+
+feature_list<-c("DF","duration","pitch","AM","centroid","Shannon entropy","roughness","attack slope","RMS energy","brightness", "skew","spectral spread")
+est_list<-c(DFest,DurEst,PitchEst,AMest,CentEst,ShanEst,RoughEst,AttackEst,RMSEst,BrightEst,SkewEst,SpreadEst)
+std_list<-c(DFstd,DurStd,PitchStd,AMstd,CentStd,ShanStd,RoughStd,AttackStd,RMSStd,BrightStd,SkewStd,SpreadStd)
+
+spectral<-data.frame(feature=feature_list,estimate=est_list,std=std_list)
+spectral$feature<-factor(spectral$feature,levels=c("DF","duration","pitch","AM","centroid","Shannon entropy","roughness","attack slope","RMS energy","brightness","skew","spectral spread"))
+
+
+F2B<-ggplot(data=spectral,aes(y=feature,x=estimate))+
+  geom_errorbar(aes(xmin=estimate-(1.69*std), xmax=estimate+(1.96*std)),width=.2)+
+  geom_point()+
+  geom_vline(xintercept=0.0, linetype="dashed", color = "blue") +
+  scale_y_discrete(limits = rev)+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"),
+        aspect.ratio = 2,
+        axis.text = element_text(size = 8),
+        axis.title = element_text(size = 12),
+        #legend.position="none"
+  )
+
+write.csv(acousticTable,here::here("results", "acousticTable.csv"))
+
+```
+
+
+```{r, include=FALSE}
+
+demographic<-data.frame(feature=NULL,estimate=NULL,std=NULL)
+
+##Does expert status significantly predict correct responses?
+FullTest$expert<-as.factor(FullTest$expert)
+model<-glmer(correct ~ expert + (1|StimID) + (1|Species) + (1|user_id), family='binomial',data=subset(FullTest,!is.na(expert)))
+demographic<-rbind(demographic,data.frame(feature="animal sounds expert",estimate=-summary(model)$coeff[2,1],std=summary(model)$coeff[2,2]))
+expertAnova<-Anova(model)
+demographicAnova<-data.frame(feature="animal sounds expert",anova=expertAnova)
+
+nAnimalExperts<-length(unique(subset(FullTest,expert==0)$user_id))
+nAnimalNonExperts<-length(unique(subset(FullTest,expert==1)$user_id))
+
+model<-glmer(correct ~ gender + (1|StimID) + (1|Species) + (1|user_id), family='binomial',data=subset(FullTest,!is.na(gender)))
+pairs(emmeans(model,~gender))
+genderAnova<-Anova(model)
+demographicAnova<-rbind(demographicAnova,data.frame(feature="gender",anova=genderAnova))
+
+model<-glmer(correct ~ gender + (1|StimID) + (1|Species) + (1|user_id), family='binomial',data=subset(FullTest,gender!="Other"&!is.na(gender)))
+demographic<-rbind(demographic,data.frame(feature="gender",estimate=summary(model)$coeff[2,1],std=summary(model)$coeff[2,2]))
+
+forIncome<-subset(FullTest,!is.na(income)&income!="I'd prefer not to say")
+forIncome<-mutate(forIncome,incomeNum=if_else(income=="Under $10,000",1,
+                                              if_else(income=="$10,000 to $19,999",2,
+                                                      if_else(income=="$20,000 to $29,999",3,
+                                                              if_else(income=="$30,000 to $39,999",4,
+                                                                      if_else(income=="$40,000 to $49,999",5,
+                                                                              if_else(income=="$50,000 to $74,999",6,
+                                                                                      if_else(income=="$75,000 to $99,999",7,
+                                                                                              if_else(income=="$100,000 to $150,000",8,9)))))))))
+forIncome$incomeOrder<-ordered(forIncome$incomeNum)
+forIncome<-mutate(forIncome,incomeBinary=if_else(incomeNum>4,"High","Low"))
+
+model<-glmer(correct ~ incomeBinary + (1|StimID) + (1|Species) + (1|user_id), family='binomial',data=forIncome)
+demographic<-rbind(demographic,data.frame(feature="income",estimate=-summary(model)$coeff[2,1],std=summary(model)$coeff[2,2]))
+
+model<-glmer(correct ~ incomeNum + (1|StimID) + (1|Species) + (1|user_id), family='binomial',data=forIncome)
+incomeAnova<-Anova(model)
+demographicAnova<-rbind(demographicAnova,data.frame(feature="income",anova=incomeAnova))
+
+
+####Age model is weird because we have such small amounts of data later on. Limit a bit
+model<-glmer(correct ~ age + (1|StimID) + (1|Species) + (1|user_id), family='binomial',data=subset(FullTest,age<45))
+ageAnova<-Anova(model)
+demographicAnova<-rbind(demographicAnova,data.frame(feature="age",anova=ageAnova))
+
+FullTest<-mutate(FullTest,ageBinary=if_else(age<31,"Low","High"))
+model<-glmer(correct ~ ageBinary + (1|StimID) + (1|Species) + (1|user_id), family='binomial',data=subset(FullTest,age<45))
+demographic<-rbind(demographic,data.frame(feature="age",estimate=-summary(model)$coeff[2,1],std=summary(model)$coeff[2,2]))
+
+model<-glmer(correct ~ musicLessons + (1|StimID) + (1|Species) + (1|user_id), family='binomial',data=subset(FullTest,!is.na(musicLessons)))
+demographic<-rbind(demographic,data.frame(feature="music lessons",estimate=summary(model)$coeff[2,1],std=summary(model)$coeff[2,2]))
+demographicAnova<-rbind(demographicAnova,data.frame(feature="music lessons",anova=Anova(model)))
+
+FullTest_forEducation<-subset(FullTest,education!="<NA>")
+FullTest_forEducation<-subset(FullTest_forEducation,education!="Other (specify on next page)")
+FullTest_forEducation$education<-ordered(FullTest_forEducation$education,levels=c("Some elementary/middle school<br>(primary school)",
+                                                                                  "Completed elementary/middle school<br>(primary school)",
+                                                                                  "Some high school",
+                                                                                  "Completed high school<br>(secondary school)",
+                                                                                  "Some undergrad<br>(higher education)",
+                                                                                  "Completed undergrad degree<br>(~3-5 years higher education)",
+                                                                                  "Some graduate school",
+                                                                                  "Completed graduate school"))
+
+FullTest_forEducation<-mutate(FullTest_forEducation,education_num=if_else(education=="Some elementary/middle school<br>(primary school)",0,
+                                                                          if_else(education=="Completed elementary/middle school<br>(primary school)",1,
+                                                                                  if_else(education=="Some high school",2,
+                                                                                          if_else(education=="Completed high school<br>(secondary school)",3,
+                                                                                                  if_else(education=="Some undergrad<br>(higher education)",4,
+                                                                                                          if_else(education=="Completed undergrad degree<br>(~3-5 years higher education)",5,
+                                                                                                                  if_else(education=="Some graduate school",6,7))))))))
+
+model<-glmer(correct ~ education_num + (1|StimID) + (1|Species) + (1|user_id), family='binomial',data=FullTest_forEducation)
+demographicAnova<-rbind(demographicAnova,data.frame(feature="education",anova=Anova(model)))
+
+FullTest_forEducation<-mutate(FullTest_forEducation,educationBinary=if_else(education_num>3,"high","low"))
+
+model<-glmer(correct ~ educationBinary + (1|StimID) + (1|Species) + (1|user_id), family='binomial',data=FullTest_forEducation)
+demographic<-rbind(demographic,data.frame(feature="education",estimate=-summary(model)$coeff[2,1],std=summary(model)$coeff[2,2]))
+
+
+FullTest_forSkill<-subset(FullTest,!is.na(musicSkill))
+FullTest_forSkill$musicSkill<-ordered(FullTest_forSkill$musicSkill,levels=c("I have no skill at all","I'm a novice","I have some skill","I have a lot of skill","I'm an expert"))
+FullTest_forSkill<-mutate(FullTest_forSkill,skillNum=if_else(musicSkill=="I have no skill at all",1,if_else(
+  musicSkill=="I'm a novice",2,if_else(
+    musicSkill=="I have some skill",3,if_else(
+      musicSkill=="I have a lot of skill",4,5
+    )
+  )
+)))
+
+FullTest_forSkill<-mutate(FullTest_forSkill,MusicExpert=if_else(skillNum>3,"Yes","No"))
+model<-glmer(correct ~ MusicExpert + (1|StimID) + (1|Species) + (1|user_id), family='binomial',data=FullTest_forSkill)
+demographicAnova<-rbind(demographicAnova,data.frame(feature="music expert",anova=Anova(model)))
+expertMusicAnova<-Anova(model)
+demographic<-rbind(demographic,data.frame(feature="music expert",estimate=summary(model)$coeff[2,1],std=summary(model)$coeff[2,2]))
+
+nMusicExperts<-length(unique(subset(FullTest_forSkill,MusicExpert=="Yes")$user_id))
+nMusicNonExperts<-length(unique(subset(FullTest_forSkill,MusicExpert=="No")$user_id))
+
+forEnjoy<-subset(FullTest,!is.na(musicEnjoy))
+forEnjoy$musicEnjoy<-as.numeric(forEnjoy$musicEnjoy)
+forEnjoy<-mutate(forEnjoy,enjoyer=if_else(musicEnjoy==1000,"Yes","No"))
+model<-glmer(correct ~ enjoyer + (1|StimID) + (1|Species) + (1|user_id), family=binomial, data=subset(forEnjoy,musicEnjoy!=500))
+length(unique(forEnjoy$user_id))
+length(unique(subset(forEnjoy,musicEnjoy==500)$user_id))
+
+enjoyAnova<-Anova(model)
+demographicAnova<-rbind(demographicAnova,data.frame(feature="music enjoyment",anova=Anova(model)))
+demographic<-rbind(demographic,data.frame(feature="music enjoyment",estimate=summary(model)$coeff[2,1],std=summary(model)$coeff[2,2]))
+
+forMake<-subset(FullTest,!is.na(musicMakeTime))
+forMake$musicMakeTime<-ordered(forMake$musicMakeTime,levels=c("No time at all","1-5 minutes","6-10 minutes","11-15 minutes","16-30 minutes","31-60 minutes","1-2 hours","2-4 hours","More than 4 hours"))
+
+forMake<-mutate(forMake,makeNum=if_else(musicMakeTime=="No time at all",1,if_else(
+  musicMakeTime=="1-5 minutes",2,if_else(
+    musicMakeTime=="6-10 minutes",3,if_else(
+      musicMakeTime=="11-15 minutes",4,if_else(
+        musicMakeTime=="16-30 minutes",5,if_else(
+          musicMakeTime=="31-60 minutes",6,if_else(
+            musicMakeTime=="1-2 hours",7,if_else(
+              musicMakeTime=="2-4 hours",8,9
+            )
+          )
+        )
+      )
+    )
+  )
+)))
+model<-glmer(correct ~ makeNum + (1|StimID) + (1|Species) + (1|user_id), family=binomial, data=forMake)
+demographicAnova<-rbind(demographicAnova,data.frame(feature="time making music",anova=Anova(model)))
+
+forMake<-mutate(forMake,makeBinary=if_else(makeNum>4,"high","low"))
+model<-glmer(correct ~ makeBinary + (1|StimID) + (1|Species) + (1|user_id), family=binomial, data=forMake)
+demographic<-rbind(demographic,data.frame(feature="time making music",estimate=-summary(model)$coeff[2,1],std=summary(model)$coeff[2,2]))
+
+
+forListen<-subset(FullTest,!is.na(musicListenTime))
+forListen$musicListenTime<-ordered(forListen$musicListenTime,levels=c("No time at all","1-5 minutes","6-10 minutes","11-15 minutes","16-30 minutes","31-60 minutes","1-2 hours","2-4 hours","More than 4 hours"))
+
+forListen<-mutate(forListen,ListenNum=if_else(musicListenTime=="No time at all",1,if_else(
+  musicListenTime=="1-5 minutes",2,if_else(
+    musicListenTime=="6-10 minutes",3,if_else(
+      musicListenTime=="11-15 minutes",4,if_else(
+        musicListenTime=="16-30 minutes",5,if_else(
+          musicListenTime=="31-60 minutes",6,if_else(
+            musicListenTime=="1-2 hours",7,if_else(
+              musicListenTime=="2-4 hours",8,9
+            )
+          )
+        )
+      )
+    )
+  )
+)))
+model<-glmer(correct ~ ListenNum + (1|StimID) + (1|Species) + (1|user_id), family=binomial, data=forListen)
+listenAnova<-Anova(model)
+demographicAnova<-rbind(demographicAnova,data.frame(feature="time listening to music",anova=listenAnova))
+
+forListen<-mutate(forListen,listenBinary=if_else(ListenNum>5,"high","low"))
+model<-glmer(correct ~ listenBinary + (1|StimID) + (1|Species) + (1|user_id), family=binomial, data=forListen)
+demographic<-rbind(demographic,data.frame(feature="time listening to music",estimate=-summary(model)$coeff[2,1],std=summary(model)$coeff[2,2]))
+
+forLessons<-subset(FullTest,!is.na(lessonsPeers))
+forLessons$lessonsPeers<-ordered(forLessons$lessonsPeers,levels=c("They were a lot better than me","They were a little better than me","We had about the same level of musical skills","I was a little better than them","I was a lot better than them"))
+
+forLessons<-mutate(forLessons,lessonsNum=if_else(lessonsPeers=="They were a lot better than me",1,if_else(
+  lessonsPeers=="They were a little better than me",2,if_else(
+    lessonsPeers=="We had about the same level of musical skills",3,if_else(
+      lessonsPeers=="I was a little better than them",4,5
+    )
+  )
+)))
+
+model<-glmer(correct ~ lessonsNum + (1|StimID) + (1|Species) + (1|user_id), family=binomial, data=forLessons)
+demographicAnova<-rbind(demographicAnova,data.frame(feature="ability wrt peers",anova=Anova(model)))
+
+forLessons<-mutate(forLessons,lessonsBinary=if_else(lessonsNum>2,"high","low"))
+model<-glmer(correct ~ lessonsBinary + (1|StimID) + (1|Species) + (1|user_id), family=binomial, data=forLessons)
+demographic<-rbind(demographic,data.frame(feature="ability wrt peers",estimate=-summary(model)$coeff[2,1],std=summary(model)$coeff[2,2]))
+
+forListen2<-subset(FullTest,!is.na(musicListen)&musicListen!=500)
+forListen2$musicListen<-as.numeric(forListen2$musicListen)
+
+length(unique(forListen2$user_id))
+length(unique(subset(FullTest,!is.na(musicListen)&musicListen==500)$user_id))
+
+forListen2<-mutate(forListen2,listenExpert=if_else(musicListen>500,"Yes","No"))
+model<-glmer(correct ~ listenExpert + (1|StimID) + (1|Species) + (1|user_id), family=binomial, data=forListen2)
+demographicAnova<-rbind(demographicAnova,data.frame(feature="listening skill",anova=Anova(model)))
+listenSkillAnova<-Anova(model)
+demographic<-rbind(demographic,data.frame(feature="listening skill",estimate=summary(model)$coeff[2,1],std=summary(model)$coeff[2,2]))
+
+demographic$feature<-factor(demographic$feature,levels=c("animal sounds expert","music expert","music lessons","ability wrt peers","time making music","time listening to music","listening skill","music enjoyment","education","age","income","gender"))
+
+demographicAnova$feature<-factor(demographicAnova$feature,levels=c("animal sounds expert","music expert","music lessons","ability wrt peers","time making music","time listening to music","listening skill","music enjoyment","education","age","income","gender"))
+
+F2C<-ggplot(data=demographic,aes(y=feature,x=estimate))+
+  geom_errorbar(aes(xmin=estimate-(1.96*std), xmax=estimate+(1.96*std)),width=.2)+
+  geom_point()+
+  geom_vline(xintercept=0.0, linetype="dashed", color = "blue") +
+  scale_y_discrete(limits = rev)+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"),
+        aspect.ratio = 1.5,
+        axis.text = element_text(size = 8),
+        axis.title = element_text(size = 12),
+        #legend.position="none"
+  )
+
+
+F2BC<-(F2B|F2C)+
+  plot_layout(widths=c(3,4))
+
+F2 <- F2A/F2BC
+
+pdf(file = here::here("viz", "Figure2.pdf"),
+    width = 6, 
+    height = 6) 
+F2
+dev.off()
+
+```
+
+Given the breadth of species, there was substantial diversity in the acoustic structure of the stimulus pairs allowing us to ask whether variation across sounds could predict aspects of preference. We categorized the traits that varied between the individual stimuli within each pair (Table S1), and found that the distinguishing trait-category significantly affected whether participants agreed with animals  (GLMM: χ^2^~`r traitAnova$Df`~ = `r r1(traitAnova$Chisq)`, *p* `r fp(traitAnova$'Pr(>Chisq)')`; Figure 2A). Therefore, we independently assessed the degree to which each trait-category predicted human-animal agreement. Among stimuli that differed in a single acoustic parameter, only frequency significantly predicted the degree of agreement (GLMM: *z* = `r r1(freqModel$coefficients[3])`, *p* `r fp(freqModel$coefficients[4])`). Among traits defined by characteristics spanning many features (see Methods), we found significant agreement for sounds with acoustic adornments (e.g., ‘trills’, ‘clicks’, and ‘chucks’; *z* = `r r1(adornModel$coefficients[3])`, *p* `r fp(adornModel$coefficients[4])`) and a non-significant trend for agreement for individual differences (e.g., 'high' vs 'low' quality; *z* = `r r1(individualsModel$coefficients[3])`, *p* `r fp(individualsModel$coefficients[4])`). We did not detect significant effects for other traits (*p* > `r r2(min(nonsig_trait_pList))`). While some acoustic traits predicted agreement for specific stimuli, we also analyzed measurable acoustic features across all stimulus pairs in the dataset, and found little evidence that differences in single acoustic features between stimuli in the pair could predict animal and human agreement when analyzed across all stimuli (Figure 2B; Supplementary Material; Figure S2). 
+
+
+
+```{r fig2, echo=FALSE, fig.width=10, fig.height=10, fig.cap="\\textbf{Figure 2 | Acoustic features and experience have little impact on agreement with non-human animals} Acoustic and demographic features have little impact on agreement with non-human animals. (A) Results for stimuli separated by the trait that differentiated the stimuli in the pair. (B,C) Model estimates and 95% confidence intervals for the impact of acoustic features (B) and participant demographics (C) on agreement with animals. For (B), all acoustic features were z-transformed to facilitate comparison across features. For (C), all values were binarized to facilitate comparison across variables, but asterisks depict significance from models with the full data. The larger dots in (C) indicate our main analyses, and smaller dots indicate exploratory analyses. For all panels, ^{\\ast}p < 0.05, ~ p < 0.10."}
+F2
+```
+
+Experience can impact perception and preferences, and we had two a priori predictions of how experience could modulate human alignment with animal preferences: experience with animal sounds and musical expertise. Neither humans with experience identifying animals by their sounds (“animal experts”; n = `r r0(nAnimalExperts)`, ~`r r0(nAnimalExperts/(nAnimalExperts+nAnimalNonExperts)*100)`% of participants that responded to the question), nor expert musicians (n = `r r0(nMusicExperts)`, ~`r r0(nMusicExperts/(nMusicExperts+nMusicNonExperts)*100)`% of participants that responded to the question) significantly agreed with animals more than non-experts (GLMMs: animal experts: χ^2^~`r expertAnova$Df`~ = `r r1(expertAnova$Chisq)`, *p* `r fp(expertAnova$'Pr(>Chisq)')`; music experts: χ^2^~`r expertMusicAnova$Df`~ = `r r1(expertMusicAnova$Chisq)`, *p* `r fp(expertMusicAnova$'Pr(>Chisq)')`; Figure 2C).
+
+
+Similarly, we did not find evidence that additional measurements of music production expertise shaped the preferences of participants. In particular, whether participants had taken music lessons, their musical ability relative to their peers (if they did take lessons), and their daily time making music did not affect the likelihood of agreement with animal preferences (Table S3). However, music listening did predict human preferences. Participants that indicated more time listening to music, greater listening skill, or higher ratings of musical enjoyment agreed with animals more than other participants (time listening: χ^2^~`r listenAnova$Df`~ = `r r1(listenAnova$Chisq)`, *p* `r fp(listenAnova$'Pr(>Chisq)')`; music skill: χ^2^~`r listenSkillAnova$Df`~ = `r r1(listenSkillAnova$Chisq)`, *p* `r fp(listenSkillAnova$'Pr(>Chisq)')`; music enjoyment: χ^2^~`r enjoyAnova$Df`~ = `r r1(enjoyAnova$Chisq)`, *p* `r fp(enjoyAnova$'Pr(>Chisq)')`; Fig. 2C, S1; Table S3).
+
+
+
+```{r, echo=FALSE}
+write.csv(demographicAnova,here::here("results", "demographicTable.csv"))
+
+```
+
+
+
+
+
+```{r, include=FALSE}
+
+demo_4fig<-FullTest %>%
+  dplyr::group_by(user_id) %>%
+  summarize(
+    Country=collapse::fmode(country),
+    Age=median(age,na.rm=TRUE),
+    Gender=collapse::fmode(gender),
+    Education=collapse::fmode(education),
+    Income=collapse::fmode(income)
+  )
+
+Ages<-table(demo_4fig$Age)
+Ages<-as.data.frame(Ages)
+Ages$Var1<-as.numeric(as.character(Ages$Var1))
+
+demoFigA<-ggplot(Ages, aes(x=Var1, y=Freq)) + 
+  geom_bar(stat="identity",position=position_dodge()) +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(size = 8),
+        axis.title = element_text(size = 12),
+        #legend.position="none"
+  )
+
+
+
+
+world_map <- map_data("world")
+world_map <- subset(world_map, region != "Antarctica")
+world_map <-filter(world_map,! long > 180)
+
+Countries<-table(demo_4fig$Country)
+c<-as.data.frame(Countries)
+c$Var1 <- str_replace(c$Var1, "United States", "USA")
+c$Var1 <- str_replace(c$Var1, "Aotearoa New Zealand", "New Zealand")
+c$Var1 <- str_replace(c$Var1, "United Kingdom", "UK")
+c$Var1 <- str_replace(c$Var1, "The Netherlands", "Netherlands")
+
+demoFigB<-ggplot(c) +
+  geom_map(dat = world_map, map = world_map, aes(map_id = region),fill = "white", color = "#7f7f7f", linewidth = 0.05) +
+  geom_map(map = world_map, aes(map_id = Var1, fill = Freq), linewidth = 0.25) +
+  scale_fill_gradient(low = "#b2d8d8", high = "#004c4c", name = "Total Users") +
+  expand_limits(x = world_map$long, y = world_map$lat)+
+  coord_map("moll") +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        axis.title=element_blank(),
+        axis.ticks=element_blank(),
+        axis.text = element_blank(),
+  )
+
+
+
+Genders<-table(demo_4fig$Gender)
+Genders<-as.data.frame(Genders)
+
+demoFigC<-ggplot(Genders, aes(x=Var1, y=Freq)) + 
+  geom_bar(stat="identity",position=position_dodge()) +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(size = 8),
+        axis.title = element_text(size = 12),
+        aspect.ratio=2,
+        axis.text.x = element_text(angle = -45, vjust = 0.5, hjust=0),
+        #legend.position="none"
+  )
+
+
+Edu<-table(demo_4fig$Education)
+Edu<-as.data.frame(Edu)
+
+Edu<-subset(Edu,Var1!="<NA>")
+Edu<-subset(Edu,Var1!="Other (specify on next page)")
+
+Edu <- Edu %>%
+  mutate(Var1 = case_when(
+    Var1=="Some elementary/middle school<br>(primary school)" ~ "Some elementary/middle",
+    Var1=="Completed elementary/middle school<br>(primary school)" ~ "Elementary/middle",
+    Var1=="Some high school" ~ "Some high school",
+    Var1=="Completed high school<br>(secondary school)" ~ "High school",
+    Var1=="Some undergrad<br>(higher education)" ~ "Some university",
+    Var1=="Completed undergrad degree<br>(~3-5 years higher education)" ~ "University",
+    Var1=="Some graduate school" ~ "Some grad school",
+    Var1=="Completed graduate school" ~ "Grad school",
+    TRUE ~ Var1
+    )
+  )
+
+Edu$Var1<-ordered(Edu$Var1,levels=c("Some elementary/middle","Elementary/middle","Some high school","High school","Some university","University","Some grad school","Grad school"))
+
+demoFigD<-ggplot(Edu, aes(x=Var1, y=Freq)) + 
+  geom_bar(stat="identity",position=position_dodge()) +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(size = 8),
+        axis.title = element_text(size = 12),
+        axis.text.x = element_text(angle = -45, vjust = 0.5, hjust=0),
+        #legend.position="none"
+  )
+
+Income<-table(demo_4fig$Income)
+Income<-as.data.frame(Income)
+
+Income<-subset(Income,!is.na(Var1)&Var1!="I'd prefer not to say")
+Income <- Income %>%
+  mutate(Var1 = case_when(
+    Var1=="Under $10,000" ~ "<10K",
+    Var1=="$10,000 to $19,999" ~ "10-20K",
+    Var1=="$20,000 to $29,999" ~ "20-30K",
+    Var1=="$30,000 to $39,999" ~ "30-40K",
+    Var1=="$40,000 to $49,999" ~ "40-50K",
+    Var1=="$50,000 to $74,999" ~ "50-75K",
+    Var1=="$75,000 to $99,999" ~ "75-100K",
+    Var1=="$100,000 to $150,000" ~ "100-150K",
+    Var1=="Over $150,000" ~ ">150K",
+    TRUE ~ Var1
+    )
+  )
+
+Income$Var1<-ordered(Income$Var1,levels=c("<10K","10-20K","20-30K","30-40K","40-50K","50-75K","75-100K","100-150K",">150K"))
+
+demoFigE<-ggplot(Income, aes(x=Var1, y=Freq)) + 
+  geom_bar(stat="identity",position=position_dodge()) +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(size = 8),
+        axis.title = element_text(size = 12),
+        axis.text.x = element_text(angle = -45, vjust = 0.5, hjust=0),
+        #legend.position="none"
+  )
+
+
+demoFig <- (demoFigA/(demoFigB|demoFigC)/(demoFigD|demoFigE))
+
+
+pdf(file = here::here("viz", "DemoFig.pdf"),
+    width = 6, 
+    height = 6) 
+demoFig
+dev.off()
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
