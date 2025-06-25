@@ -1,3 +1,7 @@
+> [!WARNING]  
+> This repo is under construction. It may be incomplete. If you run into issues please contact Samuel Mehr at sam@auckland.ac.nz.
+
+
 # animal-sounds
 Data, materials, and code for James et al. (2025, biorxiv)
 
