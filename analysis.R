@@ -41,7 +41,7 @@ color_insect<-"#88AC42"
 color_mammal<-"#AB4253"
 
 # load data
-FullTest<-read_csv(here("data", "animal-sounds-data.csv"))
+FullTest<-read_csv(here::here("data", "animal-sounds-data.csv"))
 
 # preference strength correlations
 Strength<-summarySE(FullTest, measurevar="correct", groupvars=c("StimID","Species","Category","AnimalStrength","Trait"))
@@ -247,7 +247,7 @@ nonsig_trait_pList<-c(rateModel$coefficients[4],AMModel$coefficients[4],contextM
 
 # analysis of spectral features
 Spec<-summarySE(subset(FullTest,AnimalStrength>66), measurevar="correct", groupvars=c("StimID","Species","Category","GoodAudio","BadAudio","Trait"))
-Features<-read_excel(here("data","acoustic-features.xlsx")) %>%
+Features<-read_excel(here::here("data","acoustic-features.xlsx")) %>%
   mutate(
     zDF=(DF-mean(DF,na.rm=TRUE))/sd(DF,na.rm=TRUE),
     zDur=(Duration-mean(Duration,na.rm=TRUE))/sd(Duration,na.rm=TRUE),
@@ -732,7 +732,7 @@ F2B<-ggplot(data=subset(AcousticDF,comparison %in% c("Humans","Animals")),aes(y=
         legend.position="none"
   )
 
-write.csv(acousticTable,here("temp", "acousticTable.csv"))
+write.csv(acousticTable,here::here("temp", "acousticTable.csv"))
 
 ##############
 ############## ALL FEATURES TOGETHER
@@ -991,7 +991,7 @@ F2C<-ggplot(data=demographic,aes(y=feature,x=estimate))+
         #legend.position="none"
   )
 
-write.csv(demographicAnova,here("temp", "demographicTable.csv"))
+write.csv(demographicAnova,here::here("temp", "demographicTable.csv"))
 
 ## figures
 F1B1<- ggplot() + theme_void()
@@ -1008,7 +1008,7 @@ F1R <- (F1B1 / F1RB)+
 F1 <- (F1L|F1R)+
   plot_layout(widths=c(3,7))
 
-pdf(file = here("temp", "Figure1.pdf"),
+pdf(file = here::here("temp", "Figure1.pdf"),
     width = 10, 
     height = 10) 
 F1
@@ -1023,7 +1023,7 @@ F2BC<-(F2B|F2C)+
 
 F2 <- F2A/F2BC
 
-pdf(file = here("temp", "Figure2.pdf"),
+pdf(file = here::here("temp", "Figure2.pdf"),
     width = 6, 
     height = 6) 
 F2
@@ -1070,5 +1070,5 @@ gender_corr_summary<-summary(gender_corr_model)
 gender_corr_anova<-anova(gender_corr_model)
 
 # save workspace for use in Rmd
-save.image( file = here("temp", "results.RData"))
+save.image(file = here::here("temp", "results.RData"))
 
