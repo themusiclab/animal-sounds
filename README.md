@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/1079435612.svg)](https://doi.org/10.5281/zenodo.19079833)
+
 # Humans share acoustic preferences with other animals
 This is the repository for "Humans share acoustic preferences with other animals" by Logan S. James, Sarah C. Woolley, Jon T. Sakata, Courtney B. Hilton, Michael J. Ryan and Samuel A. Mehr (2026, Science). The manuscript is publicly available at https://doi.org/10.1101/2025.06.26.661759.
 
