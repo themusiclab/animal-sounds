@@ -1,5 +1,5 @@
 # Humans share acoustic preferences with other animals
-This is the repository for "Humans share acoustic preferences with other animals" by Logan S James, Sarah C Woolley, Jon T Sakata, Courtney B Hilton, Michael J Ryan and Samuel A Mehr (2025, bioRxiv). The manuscript is publicly available at https://doi.org/10.1101/2025.06.26.661759.
+This is the repository for "Humans share acoustic preferences with other animals" by Logan S. James, Sarah C. Woolley, Jon T. Sakata, Courtney B. Hilton, Michael J. Ryan and Samuel A. Mehr (2026, Science). The manuscript is publicly available at https://doi.org/10.1101/2025.06.26.661759.
 
 ## Anatomy of the repo
 This repository is built around a reproducible R Markdown manuscript. To render the paper, run the code in `manuscript/animal-sounds.Rmd`; `pdf` and `tex` versions of the knitted manuscript are provided.
